@@ -19,57 +19,35 @@ extension Data {
 }
 
 struct StoreItem: Codable {
-    var artworkUrl60: URL
-    var collectionPrice: Double
-    var wrapperType: String
-    var country: String
-    var isStreamable: Bool
-    var releaseDate: Date
-    var artistId: Int
-    var collectionViewUrl: URL
-    var kind: String
-    var trackExplicitness: String
-    var currency: String
-    var artistName: String
-    var artistViewUrl: URL
-    var artworkUrl30: URL
-    var trackViewUrl: URL
-    var discCount: Int
-    var collectionCensoredName: String
-    var collectionId: Int
-    var trackCensoredName: String
-    var previewUrl: URL
-    var trackTimeMillis: Int
-    var trackName: String
-    var trackPrice: Double
-    var collectionName: String
-    var artworkUrl100: URL
-    var trackCount: Int
-    var trackId: Int
-    var discNumber: Int
-    var collectionExplicitness: String
-    var trackNumber: Int
-    var primaryGenreName: String
+    let kind: String
+    let artist: String
+    let artworkURL: URL
+    let name: String
+    let description: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case artist = "artistName"
+        case name = "trackName"
+        case artworkURL = "artworkUrl30"
+        case description
+    }
     
     enum AdditionalKeys: CodingKey {
+        case description
         case longDescription
     }
     
-    /*
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        trackName = try values.decode(String.self, forKey: CodingKeys.trackName)
-        artistName = try values.decode(String.self, forKey: CodingKeys.artistName)
+        name = try values.decode(String.self, forKey: CodingKeys.name)
+        artist = try values.decode(String.self, forKey: CodingKeys.artist)
         kind = try values.decode(String.self, forKey: CodingKeys.kind)
-        artworkUrl30 = try values.decode(URL.self, forKey:
-           CodingKeys.artworkUrl30)
-        artworkUrl60 = try values.decode(URL.self, forKey:
-           CodingKeys.artworkUrl60)
-        artworkUrl100 = try values.decode(URL.self, forKey:
-           CodingKeys.artworkUrl100)
-        
+        artworkURL = try values.decode(URL.self, forKey:
+           CodingKeys.artworkURL)
+    
         if let description = try? values.decode(String.self,
-           forKey: CodingKeys.description) {
+                                                forKey: CodingKeys.description) {
             self.description = description
         } else {
             let additionalValues = try decoder.container(keyedBy:
@@ -78,21 +56,53 @@ struct StoreItem: Codable {
                forKey: AdditionalKeys.longDescription)) ?? ""
         }
     }
-     */
+}
+
+struct SearchResponse: Codable {
+    let results: [StoreItem]
+}
+
+enum ItemError: Error, LocalizedError {
+    case itemsNotFound
 }
 
 let baseURL = URL(string: "https://itunes.apple.com/search")!
-var queryItems = ["term": "The+Living+Tombstone", "media": "music", "country": "US"]
+var query = [
+    "term": "The+Living+Tombstone",
+    "media": "music",
+    "country": "US"
+]
 
-var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
-
-components.queryItems = queryItems.map { URLQueryItem(name: $0.key, value: $0.value) }
+func fetchItems(matching query: [String: String]) async throws -> [StoreItem] {
+    var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+    components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+    
+    let (data, response) = try await URLSession.shared.data(from: components.url!)
+    
+    guard let httpResponse = response as? HTTPURLResponse,
+            httpResponse.statusCode == 200 else {
+        throw ItemError.itemsNotFound
+    }
+    
+    let jsonDecoder = JSONDecoder()
+    let searchResponse = try jsonDecoder.decode(SearchResponse.self, from: data)
+    
+    return searchResponse.results
+}
 
 Task {
-    let (data, response) = try await URLSession.shared.data(from: components.url!)
-    if let httpResponse = response as? HTTPURLResponse,
-        httpResponse.statusCode == 200 {
-        data.prettyPrintedJSONString()
+    do {
+        let itemsInfo = try await fetchItems(matching: query)
+        for item in itemsInfo {
+            print("""
+            Name: \(item.name)
+            Artist: \(item.artist)
+            Kind: \(item.kind)
+            Artwork URL: \(item.artworkURL)
+            
+            """)
+        }
+    } catch {
+       print(error)
     }
 }
-    
